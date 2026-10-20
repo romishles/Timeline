@@ -339,7 +339,10 @@ def validate(items, links_by_id, videos, manifest_path, images_manifest_path, pr
                 problems.add(f"Video {video_id}: file {video_dir / f'{video_id}.{extension}'} is missing")
         parent = by_id.get(parent_id)
         if parent is None:
-            problems.add(f"Video {video_id}: parent {parent_id} is not an item in the workbook")
+            problems.add(f"Video {video_id}: parent {parent_id} is not an item in the workbook. If you deleted "
+                         f"item {parent_id} on purpose, also delete the line '{video_id},{parent_id}' from "
+                         f"data/videos.csv (upload both files together); the video's files are then removed "
+                         f"automatically by the rebuild")
         elif parent[1]["type"] != "primary_image":
             problems.add(f"Video {video_id}: parent {parent_id} is a {parent[1]['type']}, not a primary_image")
 
@@ -361,8 +364,9 @@ def validate(items, links_by_id, videos, manifest_path, images_manifest_path, pr
                 missing.append(f"{path} ({' and '.join(gaps)})")
         if missing:
             problems.add(f"Item {item['id']} (row {row_number}): a {item['type']} needs its images, but these are "
-                         f"missing: {', '.join(missing)}. If they were removed by 'Clean up orphans', bring them "
-                         f"back from git history (see data/README.md, 'Bringing deleted files back')")
+                         f"missing: {', '.join(missing)}. If they were removed when the item was deleted (by the "
+                         f"rebuild or by 'Clean up orphans'), bring them back first by reverting that removal "
+                         f"commit (see data/README.md, 'Bringing deleted files back')")
     return by_id
 
 
