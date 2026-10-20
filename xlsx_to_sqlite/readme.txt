@@ -14,12 +14,16 @@ xlsx_to_sqlite.py - build the database from the workbook and the videos list
     python xlsx_to_sqlite/xlsx_to_sqlite.py data/timeline.xlsx new.db \
         --videos data/videos.csv \
         --manifest assets/videos/manifest.json \
+        --images assets/images/manifest.json \
         --baseline assets/timeline_data.db
 
   Checks everything first (columns, ids, links, types, eras, paradigm
-  groups, videos and their files, and with --baseline that the new database
-  is not much smaller). If anything is wrong it lists every problem and
-  writes nothing. Add --allow-shrink to accept a much smaller database.
+  groups, videos and their files, that every picture item has its four
+  image files and manifest entries, and with --baseline that the new
+  database is not much smaller). A video that is in the manifest but not in
+  data/videos.csv is only a warning; Clean up orphans removes it. If
+  anything is wrong it lists every problem and writes nothing. Add
+  --allow-shrink to accept a much smaller database.
 
 db_to_xlsx.py - export the database back to the workbook format
 

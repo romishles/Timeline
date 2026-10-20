@@ -15,6 +15,7 @@ on:
       - data/timeline.xlsx
       - data/videos.csv
       - assets/videos/manifest.json
+      - assets/images/manifest.json
   workflow_dispatch:
     inputs:
       allow_shrink:
@@ -58,6 +59,7 @@ jobs:
           python xlsx_to_sqlite/xlsx_to_sqlite.py data/timeline.xlsx "$RUNNER_TEMP/timeline_data.db" \
             --videos data/videos.csv \
             --manifest assets/videos/manifest.json \
+            --images assets/images/manifest.json \
             --baseline assets/timeline_data.db \
             $ALLOW_SHRINK
 

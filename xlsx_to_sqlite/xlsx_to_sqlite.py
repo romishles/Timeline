@@ -18,20 +18,27 @@ also keeps text_character and text_quote, which are always NULL.
 
 Videos are not in the workbook. They come from a CSV file with the columns
 video_id,parent_id; each one must also be in the video manifest and have its
-.mp4 and .jpg next to it. A workbook link that points to a video is skipped
-with a note, because the build adds video links itself.
+.mp4 and .jpg next to it. A video that is in the manifest but not in the CSV
+is only a warning (the site ignores it; Clean up orphans removes it). A
+workbook link that points to a video is skipped with a note, because the
+build adds video links itself.
+
+Every primary_image and every secondary_image that is not a video needs its
+four image files (thumbnails, 200, 1000, 2000) and their entries in the image
+manifest.
 
 Everything is validated before anything is written. On any problem, every
 problem is printed and nothing is written.
 
 Usage:
     python xlsx_to_sqlite.py WORKBOOK OUTPUT_DB --videos VIDEOS_CSV
-        --manifest MANIFEST_JSON [--baseline CURRENT_DB] [--allow-shrink]
+        --manifest VIDEO_MANIFEST_JSON --images IMAGE_MANIFEST_JSON
+        [--baseline CURRENT_DB] [--allow-shrink]
 
 Example (from the repository root):
     python xlsx_to_sqlite/xlsx_to_sqlite.py data/timeline.xlsx new.db \\
         --videos data/videos.csv --manifest assets/videos/manifest.json \\
-        --baseline assets/timeline_data.db
+        --images assets/images/manifest.json --baseline assets/timeline_data.db
 """
 
 import argparse
@@ -112,6 +119,9 @@ PARADIGM_GROUPS = [
     "ביטוי ועיצוב ביקורתי",
     "אינטראקציה לבישה",
 ]
+
+IMAGE_TYPES = ["primary_image", "secondary_image"]  # secondary_image items that are videos excepted
+IMAGE_SIZES = ["thumbnails", "200", "1000", "2000"]
 
 VIDEO_TYPE = "secondary_image"
 VIDEO_ENGLISH_HEADER = "Video"
@@ -275,7 +285,12 @@ def read_videos(path, problems):
     return sorted(videos)
 
 
-def validate(items, links_by_id, videos, manifest_path, problems):
+def image_paths(item_id):
+    """The four image files (relative to the image manifest's folder) an item needs."""
+    return [f"{size}/{item_id}.jpg" for size in IMAGE_SIZES]
+
+
+def validate(items, links_by_id, videos, manifest_path, images_manifest_path, problems):
     by_id = {}
     for row_number, item in items:
         if item["id"] in by_id:
@@ -315,8 +330,8 @@ def validate(items, links_by_id, videos, manifest_path, problems):
         problems.add(f"Video {video_id} is in the videos list but not in {manifest_path} "
                      f"(the site would fail to load)")
     for video_id in sorted(manifest_ids - video_ids):
-        problems.add(f"Video {video_id} is in {manifest_path} but not in the videos list "
-                     f"(the site would fail to load)")
+        print(f"warning: video {video_id} is in {manifest_path} but not in the videos list; the site "
+              f"ignores it. Run the 'Clean up orphans' workflow to remove its files and manifest entry.")
     video_dir = Path(manifest_path).parent
     for video_id, parent_id in videos:
         for extension in ("mp4", "jpg"):
@@ -327,6 +342,27 @@ def validate(items, links_by_id, videos, manifest_path, problems):
             problems.add(f"Video {video_id}: parent {parent_id} is not an item in the workbook")
         elif parent[1]["type"] != "primary_image":
             problems.add(f"Video {video_id}: parent {parent_id} is a {parent[1]['type']}, not a primary_image")
+
+    image_entries = set()
+    try:
+        image_manifest = json.loads(Path(images_manifest_path).read_text(encoding="utf-8"))
+        image_entries = {entry["path"] for entry in image_manifest}
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        problems.add(f"Cannot read the image manifest {images_manifest_path}: {error}")
+    image_dir = Path(images_manifest_path).parent
+    for row_number, item in items:
+        if item["type"] not in IMAGE_TYPES or item["id"] in video_ids:
+            continue
+        missing = []
+        for path in image_paths(item["id"]):
+            gaps = [what for what, ok in (("file", (image_dir / path).is_file()),
+                                          ("manifest entry", path in image_entries)) if not ok]
+            if gaps:
+                missing.append(f"{path} ({' and '.join(gaps)})")
+        if missing:
+            problems.add(f"Item {item['id']} (row {row_number}): a {item['type']} needs its images, but these are "
+                         f"missing: {', '.join(missing)}. If they were removed by 'Clean up orphans', bring them "
+                         f"back from git history (see data/README.md, 'Bringing deleted files back')")
     return by_id
 
 
@@ -393,12 +429,13 @@ def main():
     parser.add_argument("output", help="the database file to write")
     parser.add_argument("--videos", required=True, help="CSV with video_id,parent_id, e.g. data/videos.csv")
     parser.add_argument("--manifest", required=True, help="the video manifest, e.g. assets/videos/manifest.json")
+    parser.add_argument("--images", required=True, help="the image manifest, e.g. assets/images/manifest.json")
     parser.add_argument("--baseline", help="current database; fail if the new one is much smaller")
     parser.add_argument("--allow-shrink", action="store_true", help="allow a much smaller database")
     args = parser.parse_args()
 
     problems = Problems()
-    for path in (args.workbook, args.videos, args.manifest, args.baseline):
+    for path in (args.workbook, args.videos, args.manifest, args.images, args.baseline):
         if path and not Path(path).is_file():
             problems.add(f"File not found: {path}")
     if problems:
@@ -409,7 +446,7 @@ def main():
     if workbook is None:
         return fail(problems)
     items, links_by_id = workbook
-    by_id = validate(items, links_by_id, videos, args.manifest, problems)
+    by_id = validate(items, links_by_id, videos, args.manifest, args.images, problems)
     if problems:
         return fail(problems)
 
