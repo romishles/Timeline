@@ -41,7 +41,12 @@ The parent must be a `primary_image`. If a link cell in the Excel file points
 to a video, it is skipped with a note; that is fine.
 
 To remove a video, delete its line from `data/videos.csv`. Its files and
-manifest entry stay behind until you run **Clean up orphans** (below).
+manifest entry are then removed automatically by the rebuild (see "Deleted
+items: their files are removed automatically" below).
+
+To delete an item that has a video, delete its row from the Excel file **and**
+the video's line from `data/videos.csv`, and upload both files together. If
+you only delete the row, the rebuild stops and tells you to remove the line.
 
 ## How to upload
 
@@ -77,12 +82,34 @@ delete them, open **Actions → Build timeline database → Run workflow**, tick
 2. Open the last good version, click **View file**, then **Download raw file**.
 3. Upload that file again as described above. The database is rebuilt from it.
 
-## Cleaning up leftover files (the "Clean up orphans" button)
+## Deleted items: their files are removed automatically
 
-When you delete an item from the Excel file, or a video from `data/videos.csv`,
-its picture or video files stay in the repository. Visitors still download the
-leftover pictures every time the site loads. The **Clean up orphans** button
-finds these leftovers and, only when you confirm, removes them. It never runs
+When an upload deletes items (rows in the Excel file, or lines in
+`data/videos.csv`), the rebuild also removes those items' picture and video
+files and their manifest entries. Visitors would otherwise keep downloading
+the unused pictures every time the site loads.
+
+- It only removes files of items that this upload deleted. It never touches
+  files of items that still exist, or older leftovers (those are for the
+  button below).
+- The removal is its own commit, made right after the database rebuild:
+  **Remove leftover files of deleted items: images …; videos …**. Its message
+  lists every removed file.
+- The run's page shows the deleted ids, the removed files and manifest entries,
+  and exactly how to undo it.
+- If an upload deletes more than 5 items, or the files to remove are more than
+  40, the database is still rebuilt but **no files are removed**. The run shows
+  a yellow warning with the list of leftovers. Remove them with the button
+  below (tick **allow_shrink** if the rebuild needed it too).
+- An upload that fails its checks changes nothing, so no files are removed.
+- The original uploads in `video-originals/` are never removed; they are only
+  listed.
+
+## Cleaning up older leftover files (the "Clean up orphans" button)
+
+Leftovers that were not removed automatically (for example from before this
+was set up, or after a warning) can be removed with the **Clean up orphans**
+button. It finds them and, only when you confirm, removes them. It never runs
 by itself.
 
 **What it removes:** the four picture files (and their entries in
@@ -104,6 +131,9 @@ database, `data/videos.csv`, or the original uploads in `video-originals/`
    exact word it only does a dry run again.
 4. It removes at most 40 files per run. If it says there are more, check the
    list carefully, then run it with a higher **max_files**.
+5. If the last rebuild deleted more than 5 items, it stops and asks for
+   **allow_shrink**. Tick it (in both the dry run and the real run) if those
+   deletions were intended.
 
 It refuses to remove anything if something looks wrong, for example if the
 last database rebuild failed. The summary then says why.
@@ -114,11 +144,13 @@ never removes files of an existing item.
 
 ## Bringing deleted files back
 
-Everything the button removes is still in the repository's history.
+Every removed file is still in the repository's history.
 
 1. Open the repository's commit list (the clock icon **Commits** on the main
-   page) and find the commit **Clean up orphans: images …; videos …**. Its
-   message lists every removed file.
+   page) and find the commit that removed it:
+   **Remove leftover files of deleted items: …** (automatic) or
+   **Clean up orphans: …** (the button). Its message lists every removed file,
+   and the run's page shows the exact undo command for automatic removals.
 2. The simplest way back is to undo that commit with git:
    `git revert <commit id>`, then push. This restores the files and their
    manifest entries exactly.
@@ -126,7 +158,8 @@ Everything the button removes is still in the repository's history.
    before it, download each file you need, and upload it to the same folder.
    Then add the file's entry back to the manifest. The removed entries are shown
    in red in the commit's changes to `manifest.json`.
-4. If the item itself was deleted by mistake, also put its row back in the Excel
-   file; otherwise the next cleanup removes the files again. If you put a row
-   back before its pictures, the database rebuild stops and names the missing
+4. If the item itself was deleted by mistake: first bring its files back (step 2
+   or 3), then put its row back in the Excel file (and its line in
+   `data/videos.csv` for a video), plus any links other items had to it. If you
+   put a row back before its pictures, the rebuild stops and names the missing
    pictures, so the site is never broken by it.
