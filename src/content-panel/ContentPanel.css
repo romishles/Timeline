@@ -278,7 +278,8 @@
     outline: 1px solid color-mix(in srgb, var(--color-primary-red) 50%, transparent);
     background-color: var(--app-background-color);
 }
-.detailed-secondary-image-frame img {
+.detailed-secondary-image-frame img,
+.detailed-secondary-image-frame video {
     box-shadow: var(--img-box-shadow);
 }
 .detailed-secondary-image-frame-header {
