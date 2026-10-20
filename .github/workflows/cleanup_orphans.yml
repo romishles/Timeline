@@ -20,6 +20,10 @@ on:
         description: Most files to remove in one run
         type: number
         default: 40
+      allow_shrink:
+        description: Allow it even if the last rebuild removed more than 5 items (after a rebuild run with allow_shrink)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -76,8 +80,9 @@ jobs:
         env:
           APPLY_FLAG: ${{ steps.mode.outputs.flag }}
           MAX_FILES: ${{ inputs.max_files }}
+          ALLOW_SHRINK: ${{ inputs.allow_shrink && '--allow-shrink' || '' }}
         run: |
-          python xlsx_to_sqlite/find_orphans.py $APPLY_FLAG \
+          python xlsx_to_sqlite/find_orphans.py $APPLY_FLAG $ALLOW_SHRINK \
             --max-files "$MAX_FILES" \
             --summary "$RUNNER_TEMP/orphans.md" \
             --commit-message "$RUNNER_TEMP/commit_message.txt" || status=$?

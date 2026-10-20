@@ -80,13 +80,53 @@ jobs:
       - name: Replace the live database and commit
         if: steps.compare.outputs.changed == 'true'
         run: |
+          cp assets/timeline_data.db "$RUNNER_TEMP/previous.db"
           cp "$RUNNER_TEMP/timeline_data.db" assets/timeline_data.db
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add assets/timeline_data.db
           git commit -m "Rebuild timeline database from data/timeline.xlsx" -m "Built from $GITHUB_SHA by workflow run $GITHUB_RUN_ID."
+
+      # Removes only the image/video files and manifest entries of ids that were
+      # items in the previous database and are not items now, as a separate
+      # commit. It never blocks the database rebuild: over a limit it only warns.
+      - name: Remove leftover files of deleted items
+        id: leftovers
+        if: steps.compare.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          python xlsx_to_sqlite/find_orphans.py --apply \
+            --removed-since "$RUNNER_TEMP/previous.db" \
+            --summary "$RUNNER_TEMP/leftovers.md" \
+            --commit-message "$RUNNER_TEMP/leftovers_message.txt"
+          cat "$RUNNER_TEMP/leftovers.md" >> "$GITHUB_STEP_SUMMARY"
+          if ! git diff --cached --quiet; then
+            git commit -F "$RUNNER_TEMP/leftovers_message.txt"
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          LEFTOVERS_OUTCOME: ${{ steps.leftovers.outcome }}
+          LEFTOVERS_COMMITTED: ${{ steps.leftovers.outputs.committed }}
+        run: |
+          if [ "$LEFTOVERS_OUTCOME" = "failure" ]; then
+            echo "::warning title=Leftover files not removed::Removing the leftover files failed; the database rebuild is still pushed. Run 'Clean up orphans' (dry run first)."
+          fi
+          git reset -q --hard HEAD
           git pull --rebase origin main
           git push origin HEAD:main
+          if [ "$LEFTOVERS_COMMITTED" = "true" ]; then
+            sha=$(git log -1 --format=%H)
+            {
+              echo "### How to undo the file removal"
+              echo
+              echo "Run \`git revert $sha\` and push. That restores the removed files and manifest entries exactly; the database stays as it is."
+              echo
+              echo "Without git: open $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$sha, open the commit before it with **Browse files**, download the removed files and upload them to the same folders, then add their manifest entries back (shown in red in this commit's changes)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Ask GitHub Pages to rebuild
         if: steps.compare.outputs.changed == 'true'
