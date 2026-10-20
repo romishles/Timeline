@@ -40,6 +40,9 @@ The videos (ids 163–187) are added by the build. Adding a video needs three th
 The parent must be a `primary_image`. If a link cell in the Excel file points
 to a video, it is skipped with a note; that is fine.
 
+To remove a video, delete its line from `data/videos.csv`. Its files and
+manifest entry stay behind until you run **Clean up orphans** (below).
+
 ## How to upload
 
 1. On GitHub, open the `data` folder and choose **Add file → Upload files**.
@@ -73,3 +76,57 @@ delete them, open **Actions → Build timeline database → Run workflow**, tick
 1. Open `data/timeline.xlsx` on GitHub and click **History**.
 2. Open the last good version, click **View file**, then **Download raw file**.
 3. Upload that file again as described above. The database is rebuilt from it.
+
+## Cleaning up leftover files (the "Clean up orphans" button)
+
+When you delete an item from the Excel file, or a video from `data/videos.csv`,
+its picture or video files stay in the repository. Visitors still download the
+leftover pictures every time the site loads. The **Clean up orphans** button
+finds these leftovers and, only when you confirm, removes them. It never runs
+by itself.
+
+**What it removes:** the four picture files (and their entries in
+`assets/images/manifest.json`) of an id that is no longer an item, and the
+video files (and their entry in `assets/videos/manifest.json`) of a video that
+is no longer in `data/videos.csv`. It never touches the Excel file, the
+database, `data/videos.csv`, or the original uploads in `video-originals/`
+(those are only listed).
+
+**How to run it:**
+
+1. Open the **Actions** tab, click **Clean up orphans** on the left, then
+   **Run workflow**.
+2. First run it **with "apply" unticked**. This is a dry run: nothing changes.
+   Open the run and read its summary. It lists what it found, what it would
+   remove, what it keeps and why, and any problems to fix by hand.
+3. If the list is what you expect, run it again with **apply ticked** and type
+   the word **DELETE** (capital letters) in the **confirm** box. Without the
+   exact word it only does a dry run again.
+4. It removes at most 40 files per run. If it says there are more, check the
+   list carefully, then run it with a higher **max_files**.
+
+It refuses to remove anything if something looks wrong, for example if the
+last database rebuild failed. The summary then says why.
+
+Pictures of items that exist but never show a picture (such as the
+`tech_event` items 13 and 150) are listed as "unused but kept". The button
+never removes files of an existing item.
+
+## Bringing deleted files back
+
+Everything the button removes is still in the repository's history.
+
+1. Open the repository's commit list (the clock icon **Commits** on the main
+   page) and find the commit **Clean up orphans: images …; videos …**. Its
+   message lists every removed file.
+2. The simplest way back is to undo that commit with git:
+   `git revert <commit id>`, then push. This restores the files and their
+   manifest entries exactly.
+3. Without git: open the commit, click **Browse files** on the commit just
+   before it, download each file you need, and upload it to the same folder.
+   Then add the file's entry back to the manifest. The removed entries are shown
+   in red in the commit's changes to `manifest.json`.
+4. If the item itself was deleted by mistake, also put its row back in the Excel
+   file; otherwise the next cleanup removes the files again. If you put a row
+   back before its pictures, the database rebuild stops and names the missing
+   pictures, so the site is never broken by it.
