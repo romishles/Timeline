@@ -23,6 +23,14 @@ is only a warning (the site ignores it; Clean up orphans removes it). A
 workbook link that points to a video is skipped with a note, because the
 build adds video links itself.
 
+With --prune-videos (used by the "Build timeline database" workflow), a
+video whose parent was deleted from the workbook is removed from the CSV
+instead of stopping the build. A line is removed only when its parent_id is
+a whole number, is not an item in the workbook, and was a primary_image in
+the --baseline database; any other missing parent (a typo, a blank) is
+still a problem. The lines are removed only when the whole build passes,
+and the CSV is rewritten with nothing else changed.
+
 Every primary_image and every secondary_image that is not a video needs its
 four image files (thumbnails, 200, 1000, 2000) and their entries in the image
 manifest.
@@ -34,6 +42,7 @@ Usage:
     python xlsx_to_sqlite.py WORKBOOK OUTPUT_DB --videos VIDEOS_CSV
         --manifest VIDEO_MANIFEST_JSON --images IMAGE_MANIFEST_JSON
         [--baseline CURRENT_DB] [--allow-shrink]
+        [--prune-videos [--prune-summary SUMMARY_MD] [--prune-commit-message MESSAGE_TXT]]
 
 Example (from the repository root):
     python xlsx_to_sqlite/xlsx_to_sqlite.py data/timeline.xlsx new.db \\
@@ -290,7 +299,8 @@ def image_paths(item_id):
     return [f"{size}/{item_id}.jpg" for size in IMAGE_SIZES]
 
 
-def validate(items, links_by_id, videos, manifest_path, images_manifest_path, problems):
+def validate(items, links_by_id, videos, manifest_path, images_manifest_path, problems, pruned=None):
+    """pruned: the videos --prune-videos removed, or None when not pruning."""
     by_id = {}
     for row_number, item in items:
         if item["id"] in by_id:
@@ -329,7 +339,7 @@ def validate(items, links_by_id, videos, manifest_path, images_manifest_path, pr
     for video_id in sorted(video_ids - manifest_ids):
         problems.add(f"Video {video_id} is in the videos list but not in {manifest_path} "
                      f"(the site would fail to load)")
-    for video_id in sorted(manifest_ids - video_ids):
+    for video_id in sorted(manifest_ids - video_ids - {v for v, _ in pruned or []}):
         print(f"warning: video {video_id} is in {manifest_path} but not in the videos list; the site "
               f"ignores it. Run the 'Clean up orphans' workflow to remove its files and manifest entry.")
     video_dir = Path(manifest_path).parent
@@ -338,11 +348,15 @@ def validate(items, links_by_id, videos, manifest_path, images_manifest_path, pr
             if not (video_dir / f"{video_id}.{extension}").is_file():
                 problems.add(f"Video {video_id}: file {video_dir / f'{video_id}.{extension}'} is missing")
         parent = by_id.get(parent_id)
-        if parent is None:
+        if parent is None and pruned is None:
             problems.add(f"Video {video_id}: parent {parent_id} is not an item in the workbook. If you deleted "
                          f"item {parent_id} on purpose, also delete the line '{video_id},{parent_id}' from "
-                         f"data/videos.csv (upload both files together); the video's files are then removed "
-                         f"automatically by the rebuild")
+                         f"data/videos.csv (the build workflow does this by itself)")
+        elif parent is None:
+            problems.add(f"Video {video_id}: parent {parent_id} is not an item in the workbook, and it was not a "
+                         f"picture item before this upload either, so it is not removed automatically. Check "
+                         f"the parent id in the line '{video_id},{parent_id}' of data/videos.csv for a typo; to "
+                         f"remove the video, delete that line")
         elif parent[1]["type"] != "primary_image":
             problems.add(f"Video {video_id}: parent {parent_id} is a {parent[1]['type']}, not a primary_image")
 
@@ -393,6 +407,60 @@ def build_rows(items, links_by_id, videos, by_id):
     return item_rows, link_rows
 
 
+def videos_to_prune(videos, items, baseline_path):
+    """The (video_id, parent_id) pairs whose parent was a primary_image in the
+    baseline database and is not an item in the workbook any more."""
+    workbook_ids = {item["id"] for _, item in items}
+    with sqlite3.connect(f"file:{baseline_path}?mode=ro", uri=True) as con:
+        baseline_parents = {i for (i,) in con.execute("SELECT id FROM items WHERE type = 'primary_image'")}
+    return [(v, p) for v, p in videos if p not in workbook_ids and p in baseline_parents]
+
+
+def remove_csv_lines(path, pruned):
+    """Rewrites the videos CSV without the given (video_id, parent_id) lines,
+    keeping every other byte (header, line endings, order) as it was."""
+    path = Path(path)
+    raw = path.read_bytes()
+    lines = raw.decode("utf-8-sig").splitlines(keepends=True)
+    bom = "\ufeff" if raw.startswith(b"\xef\xbb\xbf") else ""
+    gone = set(pruned)
+    kept = [lines[0]]
+    for line in lines[1:]:
+        fields = next(csv.reader([line]), [])
+        pair = tuple(to_int(f) for f in fields) if len(fields) == 2 else None
+        if pair in gone:
+            gone.discard(pair)
+        else:
+            kept.append(line)
+    if gone:
+        raise RuntimeError(f"could not find the lines {sorted(gone)} in {path}")
+    temp = path.with_name(path.name + ".partial")
+    temp.write_bytes((bom + "".join(kept)).encode("utf-8"))
+    os.replace(temp, path)
+
+
+def write_prune_reports(pruned, videos_path, manifest_path, summary_path, message_path):
+    video_dir = Path(manifest_path).parent
+    lines = ["## Videos removed with their deleted parent", "",
+             f"These parents were deleted from the workbook in this upload, so their videos' lines were "
+             f"removed from `{videos_path}` (a separate commit). The video files and manifest entries are "
+             f"removed by **Leftover files of deleted items** below.", "",
+             "| video | parent | line removed | files to remove |", "|---|---|---|---|"]
+    for video_id, parent_id in pruned:
+        files = ", ".join(f"`{video_dir / f'{video_id}.{ext}'}`" for ext in ("mp4", "jpg"))
+        lines.append(f"| {video_id} | {parent_id} | `{video_id},{parent_id}` | {files} and its entry in "
+                     f"`{manifest_path}` |")
+    lines.append("")
+    if summary_path:
+        Path(summary_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if message_path:
+        ids = ", ".join(f"{v} (parent {p})" for v, p in pruned)
+        Path(message_path).write_text(
+            f"Remove videos of deleted items: {ids}\n\n"
+            + "\n".join(f"Removed the line '{v},{p}' from {videos_path}: item {p} was deleted from the workbook."
+                        for v, p in pruned) + "\n", encoding="utf-8")
+
+
 def check_shrink(item_rows, link_rows, baseline_path, allow_shrink, problems):
     with sqlite3.connect(f"file:{baseline_path}?mode=ro", uri=True) as con:
         old_items = con.execute("SELECT COUNT(*) FROM items").fetchone()[0]
@@ -436,7 +504,14 @@ def main():
     parser.add_argument("--images", required=True, help="the image manifest, e.g. assets/images/manifest.json")
     parser.add_argument("--baseline", help="current database; fail if the new one is much smaller")
     parser.add_argument("--allow-shrink", action="store_true", help="allow a much smaller database")
+    parser.add_argument("--prune-videos", action="store_true",
+                        help="remove the videos of parents deleted from the workbook from the videos CSV "
+                             "(needs --baseline; done only when the whole build passes)")
+    parser.add_argument("--prune-summary", help="with --prune-videos: write a Markdown summary here if any were removed")
+    parser.add_argument("--prune-commit-message", help="with --prune-videos: write a commit message here if any were removed")
     args = parser.parse_args()
+    if args.prune_videos and not args.baseline:
+        parser.error("--prune-videos needs --baseline")
 
     problems = Problems()
     for path in (args.workbook, args.videos, args.manifest, args.images, args.baseline):
@@ -450,16 +525,24 @@ def main():
     if workbook is None:
         return fail(problems)
     items, links_by_id = workbook
-    by_id = validate(items, links_by_id, videos, args.manifest, args.images, problems)
+    pruned = videos_to_prune(videos, items, args.baseline) if args.prune_videos else []
+    videos = [v for v in videos if v not in pruned]
+    by_id = validate(items, links_by_id, videos, args.manifest, args.images, problems,
+                     pruned if args.prune_videos else None)
     if problems:
-        return fail(problems)
+        return fail(problems, pruned)
 
     item_rows, link_rows = build_rows(items, links_by_id, videos, by_id)
     if args.baseline:
         check_shrink(item_rows, link_rows, args.baseline, args.allow_shrink, problems)
     if problems:
-        return fail(problems)
+        return fail(problems, pruned)
 
+    if pruned:
+        remove_csv_lines(args.videos, pruned)
+        write_prune_reports(pruned, args.videos, args.manifest, args.prune_summary, args.prune_commit_message)
+        for video_id, parent_id in pruned:
+            print(f"Removed video {video_id} from {args.videos}: its parent {parent_id} was deleted from the workbook")
     write_database(args.output, item_rows, link_rows)
     print(f"Done -> {args.output}")
     print(f"  items : {len(item_rows)} rows ({len(items)} from the workbook, {len(videos)} videos)")
@@ -467,10 +550,13 @@ def main():
     return 0
 
 
-def fail(problems):
+def fail(problems, pruned=()):
     print(f"Build failed: {len(problems.messages)} problem(s). Nothing was written.", file=sys.stderr)
     for message in problems.messages:
         print(f"  - {message}", file=sys.stderr)
+    for video_id, parent_id in pruned:
+        print(f"note: video {video_id} belongs to item {parent_id}, which was deleted; it will be removed "
+              f"automatically once the problems above are fixed", file=sys.stderr)
     return 1
 
 

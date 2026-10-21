@@ -4,9 +4,14 @@ name: Build timeline database
 # The new database is built and validated in a temporary file first; the live
 # database is only replaced when every check passes.
 #
-# The commit made by this workflow uses the built-in GITHUB_TOKEN, so it does
-# not start another run, and it only changes assets/timeline_data.db, which is
-# not one of the trigger paths.
+# The commits made by this workflow use the built-in GITHUB_TOKEN, so they do
+# not start another run (pushes made with GITHUB_TOKEN never trigger
+# workflows, even when they change a trigger path such as data/videos.csv).
+#
+# If the upload deleted the parent item of a video, the build removes that
+# video's line from data/videos.csv (--prune-videos) and it is committed
+# before the database; the video's files are then removed with the other
+# leftovers of deleted items.
 
 on:
   push:
@@ -61,7 +66,25 @@ jobs:
             --manifest assets/videos/manifest.json \
             --images assets/images/manifest.json \
             --baseline assets/timeline_data.db \
+            --prune-videos \
+            --prune-summary "$RUNNER_TEMP/pruned.md" \
+            --prune-commit-message "$RUNNER_TEMP/pruned_message.txt" \
             $ALLOW_SHRINK
+
+      # Only reached when the whole build passed; the build changes
+      # data/videos.csv only then, and only for parents deleted in this upload.
+      - name: Commit removed video lines
+        id: pruned
+        run: |
+          if [ -f "$RUNNER_TEMP/pruned_message.txt" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            printf '\nBuilt from %s by workflow run %s.\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" >> "$RUNNER_TEMP/pruned_message.txt"
+            git add data/videos.csv
+            git commit -F "$RUNNER_TEMP/pruned_message.txt"
+            cat "$RUNNER_TEMP/pruned.md" >> "$GITHUB_STEP_SUMMARY"
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Compare with the live database
         id: compare
@@ -110,6 +133,7 @@ jobs:
         env:
           LEFTOVERS_OUTCOME: ${{ steps.leftovers.outcome }}
           LEFTOVERS_COMMITTED: ${{ steps.leftovers.outputs.committed }}
+          PRUNED_COMMITTED: ${{ steps.pruned.outputs.committed }}
         run: |
           if [ "$LEFTOVERS_OUTCOME" = "failure" ]; then
             echo "::warning title=Leftover files not removed::Removing the leftover files failed; the database rebuild is still pushed. Run 'Clean up orphans' (dry run first)."
@@ -125,6 +149,21 @@ jobs:
               echo "Run \`git revert $sha\` and push. That restores the removed files and manifest entries exactly; the database stays as it is."
               echo
               echo "Without git: open $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$sha, open the commit before it with **Browse files**, download the removed files and upload them to the same folders, then add their manifest entries back (shown in red in this commit's changes)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$PRUNED_COMMITTED" = "true" ]; then
+            pruned_sha=$(git log -4 --format='%H %s' | awk '!found && $2 == "Remove" && $3 == "videos" && $4 == "of" { print $1; found = 1 }')
+            {
+              echo
+              echo "### How to bring back a deleted item with its video"
+              echo
+              if [ "$LEFTOVERS_COMMITTED" = "true" ]; then
+                echo "Run \`git revert $(git log -1 --format=%H) $pruned_sha\`, put the item's row back in \`data/timeline.xlsx\` (with any links other items had to it), and push all of it together. The first revert restores the files and manifest entries, the second the line in \`data/videos.csv\`; the next rebuild then adds the item and its video again."
+              else
+                echo "The files were not removed. Run \`git revert $pruned_sha\` (it restores the line in \`data/videos.csv\`), put the item's row back in \`data/timeline.xlsx\` (with any links other items had to it), and push both together; the next rebuild then adds the item and its video again."
+              fi
+              echo
+              echo "If something is missing (for example the row is back but not its pictures), the rebuild stops and names it; nothing on the site breaks."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 

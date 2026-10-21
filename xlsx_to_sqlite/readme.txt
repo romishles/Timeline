@@ -25,6 +25,11 @@ xlsx_to_sqlite.py - build the database from the workbook and the videos list
   anything is wrong it lists every problem and writes nothing. Add
   --allow-shrink to accept a much smaller database.
 
+  Add --prune-videos (with --baseline) to remove from data/videos.csv the
+  videos whose parent was deleted from the workbook, as the build workflow
+  does. Only parents that were picture items in the baseline count, and the
+  CSV is changed only if the whole build passes.
+
 db_to_xlsx.py - export the database back to the workbook format
 
     python xlsx_to_sqlite/db_to_xlsx.py assets/timeline_data.db timeline.xlsx \
