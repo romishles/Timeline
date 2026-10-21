@@ -480,11 +480,6 @@
     "height": 562
   },
   {
-    "path": "1000/72.jpg",
-    "width": 1000,
-    "height": 750
-  },
-  {
     "path": "1000/73.jpg",
     "width": 1000,
     "height": 694
@@ -1103,11 +1098,6 @@
     "path": "200/71.jpg",
     "width": 200,
     "height": 112
-  },
-  {
-    "path": "200/72.jpg",
-    "width": 200,
-    "height": 150
   },
   {
     "path": "200/73.jpg",
@@ -1730,11 +1720,6 @@
     "height": 2000
   },
   {
-    "path": "2000/72.jpg",
-    "width": 2667,
-    "height": 2000
-  },
-  {
     "path": "2000/73.jpg",
     "width": 2880,
     "height": 2000
@@ -2351,11 +2336,6 @@
   },
   {
     "path": "thumbnails/71.jpg",
-    "width": 200,
-    "height": 200
-  },
-  {
-    "path": "thumbnails/72.jpg",
     "width": 200,
     "height": 200
   },
