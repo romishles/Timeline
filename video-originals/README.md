@@ -21,7 +21,7 @@ Upload raw videos here as `<item id>.mp4`.
 | 68.mp4 | 68 | Topobo | yes | 44.7 s | 3.2 MB |
 | 70.mp4 | 70 | I/O Brush | yes | 16.0 s | 1.8 MB |
 | 72.mp4 | 72 | The Drift Table | yes | 114.2 s | 3.7 MB |
-| 73.mp4 | 73 | Reactable Live | yes | 100.0 s | 3.3 MB |
+| 73.mp4 | 73 | Reactable Live | yes | 99.0 s | 4.5 MB |
 | 78.mp4 | 78 | Siftables | yes | 60.9 s | 3.5 MB |
 | 79.mp4 | 79 | BumpTop | yes | 64.0 s | 4.3 MB |
 | 82.mp4 | 82 | Skinput | yes | 32.0 s | 3.8 MB |
