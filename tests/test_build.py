@@ -9,6 +9,12 @@ import unittest
 from sandbox import Sandbox
 
 
+def counts(path):
+    """(items, links) in a database."""
+    items, links = items_and_links(path)
+    return len(items), len(links)
+
+
 def items_and_links(path):
     con = sqlite3.connect(path)
     try:
@@ -22,7 +28,8 @@ class LiveFiles(unittest.TestCase):
         box = Sandbox()
         result = box.build()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("items: 175 -> 175, links: 164 -> 164", result.stdout)
+        items, links = counts(box.path("assets/timeline_data.db"))
+        self.assertIn(f"items: {items} -> {items}, links: {links} -> {links}", result.stdout)
         self.assertEqual(box.path("new.db").read_bytes(), box.path("assets/timeline_data.db").read_bytes())
 
     def test_prune_videos_changes_nothing_when_no_parent_was_deleted(self):
@@ -201,7 +208,8 @@ class ShrinkLimit(unittest.TestCase):
         con.close()
         result = box.build("--baseline", "baseline.db", baseline=False)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("would remove 20 links (limit 10% = 18)", result.stderr)
+        limit = int(0.10 * (counts(box.path("assets/timeline_data.db"))[1] + 20))
+        self.assertIn(f"would remove 20 links (limit 10% = {limit})", result.stderr)
 
     def test_a_deleted_parent_and_its_video_count_as_two_items(self):
         box = Sandbox()
@@ -217,6 +225,7 @@ class PruneVideos(unittest.TestCase):
     def test_deleted_parent_removes_only_its_line(self):
         box = Sandbox()
         before = box.path("data/videos.csv").read_bytes()
+        old_items, old_links = counts(box.path("assets/timeline_data.db"))
         box.delete_items([72])
         result = box.build("--prune-videos", "--prune-summary", "s.md", "--prune-commit-message", "m.txt")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -224,10 +233,10 @@ class PruneVideos(unittest.TestCase):
         self.assertNotIn("warning: video 187", result.stdout)
         self.assertEqual(box.path("data/videos.csv").read_bytes(), before.replace(b"187,72\n", b""))
         items, links = items_and_links(box.path("new.db"))
-        self.assertEqual(len(items), 173)
+        self.assertEqual(len(items), old_items - 2)
         self.assertNotIn(72, [i[0] for i in items])
         self.assertNotIn(187, [i[0] for i in items])
-        self.assertEqual(len(links), 162)
+        self.assertEqual(len(links), old_links - 2)
         self.assertTrue(box.path("m.txt").read_text().startswith("Remove videos of deleted items: 187 (parent 72)\n"))
         summary = box.path("s.md").read_text()
         self.assertIn("## Videos removed with their deleted parent", summary)

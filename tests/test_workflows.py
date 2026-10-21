@@ -83,8 +83,8 @@ class BuildWorkflow(unittest.TestCase):
         for path in ["assets/videos/187.mp4", "assets/videos/187.jpg"] + image_files(72):
             self.assertFalse(box.origin_has(path), path)
         manifest = json.loads(box.origin_show("assets/videos/manifest.json"))
-        self.assertEqual(sorted(e["id"] for e in manifest), list(range(163, 187)))
-        self.assertEqual(len(json.loads(video_manifest)) - 1, len(manifest))
+        self.assertEqual(sorted(e["id"] for e in manifest),
+                         sorted(e["id"] for e in json.loads(video_manifest) if e["id"] != 187))
         self.assertNotIn('"200/72.jpg"', box.origin_show("assets/images/manifest.json"))
         self.assertTrue(box.origin_has("video-originals/72.mp4"))  # originals are never removed
 
@@ -92,7 +92,8 @@ class BuildWorkflow(unittest.TestCase):
         s = run.summary
         self.assertIn("## Videos removed with their deleted parent", s)
         self.assertIn("| 187 | 72 | `187,72` | `assets/videos/187.mp4`, `assets/videos/187.jpg` and its entry", s)
-        self.assertIn("items 175 → 173", s)
+        before, after = map(int, re.search(r"items (\d+) → (\d+)", s).groups())
+        self.assertEqual(after, before - 2)
         self.assertIn("Ids removed by this upload (items in the previous database, not in the new one): 72, 187\n", s)
         self.assertIn("### Deleted 6 file(s) and 5 manifest entries", s)
         self.assertIn("- `video-originals/72.mp4`", s)
