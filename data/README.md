@@ -44,9 +44,15 @@ To remove a video, delete its line from `data/videos.csv`. Its files and
 manifest entry are then removed automatically by the rebuild (see "Deleted
 items: their files are removed automatically" below).
 
-To delete an item that has a video, delete its row from the Excel file **and**
-the video's line from `data/videos.csv`, and upload both files together. If
-you only delete the row, the rebuild stops and tells you to remove the line.
+To delete an item that has a video, just delete its row from the Excel file
+and upload it. The rebuild removes the video's line from `data/videos.csv`
+for you, then the video's files with the item's pictures (see "Deleted items:
+their files are removed automatically" below). You may still delete the line
+yourself as well; that works the same.
+
+This only happens for an item that existed before your upload. If a line in
+`data/videos.csv` names a parent that never existed (a typo), or its parent
+is blank, the rebuild stops and names the line, as before.
 
 ## How to upload
 
@@ -87,18 +93,23 @@ delete them, open **Actions → Build timeline database → Run workflow**, tick
 When an upload deletes items (rows in the Excel file, or lines in
 `data/videos.csv`), the rebuild also removes those items' picture and video
 files and their manifest entries. Visitors would otherwise keep downloading
-the unused pictures every time the site loads.
+the unused pictures every time the site loads. A deleted item's video goes
+with it.
 
 - It only removes files of items that this upload deleted. It never touches
   files of items that still exist, or older leftovers (those are for the
   button below).
+- If a deleted item had a video, its line in `data/videos.csv` is removed
+  first, in its own commit: **Remove videos of deleted items: 187 (parent 72)**.
 - The removal is its own commit, made right after the database rebuild:
   **Remove leftover files of deleted items: images …; videos …**. Its message
   lists every removed file.
-- The run's page shows the deleted ids, the removed files and manifest entries,
-  and exactly how to undo it.
-- If an upload deletes more than 5 items, or the files to remove are more than
-  40, the database is still rebuilt but **no files are removed**. The run shows
+- The run's page shows the deleted ids, the removed videos and their parents,
+  the removed files and manifest entries, and exactly how to undo it.
+- An item with a video counts as two deleted items for the limits below.
+- If an upload deletes more than 5 items, the rebuild stops (see "How to see if
+  it worked"). If you run it with **allow_shrink**, or the files to remove are
+  more than 40, the database is still rebuilt but **no files are removed**. The run shows
   a yellow warning with the list of leftovers. Remove them with the button
   below (tick **allow_shrink** if the rebuild needed it too).
 - An upload that fails its checks changes nothing, so no files are removed.
@@ -159,7 +170,9 @@ Every removed file is still in the repository's history.
    Then add the file's entry back to the manifest. The removed entries are shown
    in red in the commit's changes to `manifest.json`.
 4. If the item itself was deleted by mistake: first bring its files back (step 2
-   or 3), then put its row back in the Excel file (and its line in
-   `data/videos.csv` for a video), plus any links other items had to it. If you
-   put a row back before its pictures, the rebuild stops and names the missing
-   pictures, so the site is never broken by it.
+   or 3), then put its row back in the Excel file, plus any links other items
+   had to it. If it had a video, also undo the **Remove videos of deleted
+   items** commit (`git revert <commit id>`), or put its line back in
+   `data/videos.csv` by hand. Push all of it together. The run's page shows
+   the exact commands. If you put a row back before its pictures, the rebuild
+   stops and names the missing pictures, so the site is never broken by it.
