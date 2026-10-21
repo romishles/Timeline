@@ -17,6 +17,7 @@ Upload raw videos here as `<item id>.mp4`.
 | 55.mp4 | 55 | Luminous Room/Urp | yes | 45.0 s | 5.8 MB |
 | 61.mp4 | 61 | DiamondTouch | yes | 29.0 s | 1.5 MB |
 | 66.mp4 | 66 | Illuminating Clay | yes | 39.0 s | 3.1 MB |
+| 67.mp4 | 67 | Paro | yes | 30.0 s | 2.7 MB |
 | 68.mp4 | 68 | Topobo | yes | 44.7 s | 3.2 MB |
 | 70.mp4 | 70 | I/O Brush | yes | 16.0 s | 1.8 MB |
 | 72.mp4 | 72 | The Drift Table | yes | 114.2 s | 3.7 MB |
